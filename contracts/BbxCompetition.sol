@@ -1,9 +1,7 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.7;
 
-import "hardhat/console.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol"; // AccessControl vs Ownable # TODO
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
 contract BbxCompetition is AccessControl {
@@ -12,8 +10,15 @@ contract BbxCompetition is AccessControl {
     bytes32 public constant HELPER_ROLE = keccak256("HELPER_ROLE");
     bytes32 public constant JUDGE_ROLE = keccak256("JUDGE_ROLE");
 
-    string public name;
-    address public winner;
+    struct MetaData {
+        string name;
+        string description;
+        string image;
+        uint256 wildcardStart;
+        uint256 wildcardEnd;
+    }
+
+    MetaData public metaData;
 
     struct Beatboxer {
         string name;
@@ -36,6 +41,7 @@ contract BbxCompetition is AccessControl {
         uint256 startTime;
         uint256 endTime;
         uint256 winningAmount;
+        uint256 totalVotes;
         string name;
     }
 
@@ -59,6 +65,7 @@ contract BbxCompetition is AccessControl {
     Counters.Counter public beatboxerCount;
 
     event BattleCreated(
+        address competitionAddress,
         uint256 id,
         string name,
         address beatboxerOneAddress,
@@ -68,8 +75,21 @@ contract BbxCompetition is AccessControl {
         uint256 winningAmount
     );
 
-    event BeatboxerAdded(address beatboxerAddress, string name);
-    event JudgeAdded(address judgeAddress, string name);
+    event BeatboxerAdded(
+        address competitionAddress,
+        address beatboxerAddress,
+        string name
+    );
+    event BeatboxerRemoved(
+        address competitionAddress,
+        address beatboxerAddress
+    );
+    event JudgeAdded(
+        address competitionAddress,
+        address judgeAddress,
+        string name
+    );
+    event JudgeRemoved(address competitionAddress, address judgeAddress);
 
     modifier isAdmin() {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
@@ -85,6 +105,7 @@ contract BbxCompetition is AccessControl {
         if (!hasRole(JUDGE_ROLE, msg.sender)) revert NotJudge();
         _;
     }
+
     modifier isAdminOrHelper() {
         if (
             !hasRole(DEFAULT_ADMIN_ROLE, msg.sender) &&
@@ -98,8 +119,21 @@ contract BbxCompetition is AccessControl {
     error NotJudge();
     error NotAdminOrHelper();
 
-    constructor(string memory _name, address contractOwner) {
-        name = _name;
+    constructor(
+        string memory _name,
+        address contractOwner,
+        string memory _description,
+        string memory _image,
+        uint256 _wildcardStart,
+        uint256 _wildcardEnd
+    ) {
+        metaData = MetaData({
+            name: _name,
+            description: _description,
+            image: _image,
+            wildcardStart: _wildcardStart,
+            wildcardEnd: _wildcardEnd
+        });
         _setupRole(DEFAULT_ADMIN_ROLE, contractOwner);
     }
 
@@ -134,6 +168,7 @@ contract BbxCompetition is AccessControl {
         battles.push(battle);
 
         emit BattleCreated(
+            address(this),
             battle.id,
             battle.name,
             battle.beatboxerOneAddress,
@@ -165,6 +200,7 @@ contract BbxCompetition is AccessControl {
         battlePoints[battleId][battle.beatboxerTwoAddress] = point2;
         battle.beatboxerOneScore += _calculateScore(point1);
         battle.beatboxerTwoScore += _calculateScore(point2);
+        battle.totalVotes++;
         judgeVoted[battleId][msg.sender] = true;
     }
 
@@ -191,7 +227,14 @@ contract BbxCompetition is AccessControl {
         if (!hasRole(JUDGE_ROLE, judgeAddress)) {
             // judges.push(Judge(_name, judgeAddress));
             _setupRole(JUDGE_ROLE, judgeAddress);
-            emit JudgeAdded(judgeAddress, _name);
+            emit JudgeAdded(address(this), judgeAddress, _name);
+        }
+    }
+
+    function removeJudge(address judgeAddress) public isAdminOrHelper {
+        if (hasRole(JUDGE_ROLE, judgeAddress)) {
+            _revokeRole(JUDGE_ROLE, judgeAddress);
+            emit JudgeRemoved(address(this), judgeAddress);
         }
     }
 
@@ -213,11 +256,44 @@ contract BbxCompetition is AccessControl {
             true
         );
         beatboxerCount.increment();
-        emit BeatboxerAdded(beatboxerAddress, _name);
+        emit BeatboxerAdded(address(this), beatboxerAddress, _name);
+    }
+
+    function addBeatboxers(address[] memory beatboxerAddresses, string[] memory _names) public isAdminOrHelper {
+        require(beatboxerAddresses.length == _names.length, "Beatboxer addresses and names must be the same length");
+        for (uint i = 0; i < beatboxerAddresses.length; i++) {
+            if (beatboxerAddresses[i] != address(0) && !beatboxerByAddress[beatboxerAddresses[i]].added) {
+                beatboxerByAddress[beatboxerAddresses[i]] = Beatboxer(
+                    _names[i],
+                    beatboxerAddresses[i],
+                    true
+                );
+                beatboxerCount.increment();
+                emit BeatboxerAdded(address(this), beatboxerAddresses[i], _names[i]);
+            }
+        }
+    }
+
+    function removeBeatboxer(address beatboxerAddress) public isAdminOrHelper {
+        require(
+            beatboxerByAddress[beatboxerAddress].added == true,
+            "Beatboxer does not exist"
+        );
+        delete beatboxerByAddress[beatboxerAddress];
+        beatboxerCount.decrement();
+        emit BeatboxerRemoved(address(this), beatboxerAddress);
     }
 
     function setName(string memory _name) public isAdmin {
-        name = _name;
+        metaData.name = _name;
+    }
+
+    function setDescription(string memory _description) public isAdmin {
+        metaData.description = _description;
+    }
+
+    function setImage(string memory _image) public isAdmin {
+        metaData.image = _image;
     }
 
     receive() external payable {

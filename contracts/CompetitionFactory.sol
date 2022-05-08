@@ -2,32 +2,103 @@
 pragma solidity ^0.8.7;
 
 import "./BbxCompetition.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-// import "@openzeppelin/contracts/utils/Counters.sol";
-
-contract CompetitionFactory {
-    // using Counters for Counters.Counter;
-
+contract CompetitionFactory is Ownable {
     struct Competition {
+        uint256 competitionId;
+        uint256 wildcardStart;
+        uint256 wildcardEnd;
         string name;
+        string description;
+        string image;
+        address creator;
         address contractAddress;
     }
 
-    Competition[] public competitions;
+    event CompetitionCreated(
+        uint256 indexed competitionId,
+        string indexed name,
+        address indexed creator,
+        uint256 wildcardStart,
+        uint256 wildcardEnd,
+        address contractAddress,
+        string description,
+        string image
+    );
 
-    event CompetitionCreated(uint256 id, string name);
+    Competition[] public competitions;
 
     constructor() {}
 
-    function createCompetition(string memory name) public returns (address) {
-        BbxCompetition bbxCompetition = new BbxCompetition(name, msg.sender);
-        address contractAddress = address(bbxCompetition);
-        uint256 competitionId = competitions.length;
-        competitions.push(
-            Competition({name: name, contractAddress: contractAddress})
+    function createCompetition(
+        string memory name,
+        string memory description,
+        string memory image,
+        uint256 wildcardStart,
+        uint256 wildcardEnd
+    ) external returns (address) {
+        BbxCompetition bbxCompetition = new BbxCompetition(
+            name,
+            msg.sender,
+            description,
+            image,
+            wildcardStart,
+            wildcardEnd
         );
-        emit CompetitionCreated(competitionId, name);
+        uint256 competitionId = competitions.length;
+        address contractAddress = address(bbxCompetition);
+        competitions.push(
+            Competition(
+                competitionId,
+                wildcardStart,
+                wildcardEnd,
+                name,
+                description,
+                image,
+                msg.sender,
+                contractAddress
+            )
+        );
+        emit CompetitionCreated(
+            competitionId,
+            name,
+            msg.sender,
+            wildcardStart,
+            wildcardEnd,
+            contractAddress,
+            description,
+            image
+        );
         return contractAddress;
+    }
+
+    function getCompetitionsByCreator(address creator)
+        external
+        view
+        returns (Competition[] memory)
+    {
+        uint256 totalCompetitions = 0;
+        uint256 counter = 0;
+        for (uint256 i = 0; i < competitions.length; i++) {
+            if (competitions[i].creator == creator) {
+                totalCompetitions++;
+            }
+        }
+
+        Competition[] memory result = new Competition[](totalCompetitions);
+        for (uint256 i = 0; i < competitions.length; i++) {
+            if (competitions[i].creator == creator) {
+                result[counter] = competitions[i];
+                counter++;
+            }
+        }
+        return result;
+    }
+
+    function withdraw() external onlyOwner {
+        (bool sent, ) = owner().call{value: address(this).balance}("");
+        require(sent, "Not enough funds");
     }
 
     receive() external payable {
