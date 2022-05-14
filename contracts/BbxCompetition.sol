@@ -43,6 +43,7 @@ contract BbxCompetition is AccessControl {
         uint256 winningAmount;
         uint256 totalVotes;
         string name;
+        string category;
     }
 
     struct Point {
@@ -63,11 +64,13 @@ contract BbxCompetition is AccessControl {
     mapping(uint256 => mapping(address => Point)) public battlePoints;
     mapping(uint256 => mapping(address => bool)) public judgeVoted;
     Counters.Counter public beatboxerCount;
+    Counters.Counter public judgeCount;
 
     event BattleCreated(
         address competitionAddress,
         uint256 id,
         string name,
+        string category,
         address beatboxerOneAddress,
         address beatboxerTwoAddress,
         uint256 startTime,
@@ -139,6 +142,7 @@ contract BbxCompetition is AccessControl {
 
     function startBattle(
         string memory _name,
+        string memory _category,
         address _beatboxerOneAddress,
         address _beatboxerTwoAddress,
         uint256 _startTime,
@@ -146,19 +150,20 @@ contract BbxCompetition is AccessControl {
         uint256 _winningAmount
     ) public isAdmin {
         require(
-            _beatboxerOneAddress != address(0) &&
-                _beatboxerTwoAddress != address(0),
-            "Beatboxer addresses cannot be 0"
-        );
-        require(
             _beatboxerOneAddress != _beatboxerTwoAddress,
             "Beatboxer addresses cannot be the same"
+        );
+        require(
+            beatboxerByAddress[_beatboxerOneAddress].added &&
+                beatboxerByAddress[_beatboxerTwoAddress].added,
+            "Beatboxer addresses must be added"
         );
         require(_endTime > _startTime, "End time must be after start time");
 
         Battle memory battle;
         battle.id = battles.length;
         battle.name = _name;
+        battle.category = _category;
         battle.beatboxerOneAddress = _beatboxerOneAddress;
         battle.beatboxerTwoAddress = _beatboxerTwoAddress;
         battle.startTime = _startTime;
@@ -171,6 +176,7 @@ contract BbxCompetition is AccessControl {
             address(this),
             battle.id,
             battle.name,
+            battle.category,
             battle.beatboxerOneAddress,
             battle.beatboxerTwoAddress,
             battle.startTime,
@@ -202,6 +208,7 @@ contract BbxCompetition is AccessControl {
         battle.beatboxerTwoScore += _calculateScore(point2);
         battle.totalVotes++;
         judgeVoted[battleId][msg.sender] = true;
+        if (judgeCount.current() == battle.totalVotes) {}
     }
 
     function _calculateScore(Point memory point)
@@ -227,6 +234,7 @@ contract BbxCompetition is AccessControl {
         if (!hasRole(JUDGE_ROLE, judgeAddress)) {
             // judges.push(Judge(_name, judgeAddress));
             _setupRole(JUDGE_ROLE, judgeAddress);
+            judgeCount.increment();
             emit JudgeAdded(address(this), judgeAddress, _name);
         }
     }
@@ -234,6 +242,7 @@ contract BbxCompetition is AccessControl {
     function removeJudge(address judgeAddress) public isAdminOrHelper {
         if (hasRole(JUDGE_ROLE, judgeAddress)) {
             _revokeRole(JUDGE_ROLE, judgeAddress);
+            judgeCount.decrement();
             emit JudgeRemoved(address(this), judgeAddress);
         }
     }
@@ -259,17 +268,30 @@ contract BbxCompetition is AccessControl {
         emit BeatboxerAdded(address(this), beatboxerAddress, _name);
     }
 
-    function addBeatboxers(address[] memory beatboxerAddresses, string[] memory _names) public isAdminOrHelper {
-        require(beatboxerAddresses.length == _names.length, "Beatboxer addresses and names must be the same length");
-        for (uint i = 0; i < beatboxerAddresses.length; i++) {
-            if (beatboxerAddresses[i] != address(0) && !beatboxerByAddress[beatboxerAddresses[i]].added) {
+    function addBeatboxers(
+        address[] memory beatboxerAddresses,
+        string[] memory _names
+    ) public isAdminOrHelper {
+        require(
+            beatboxerAddresses.length == _names.length,
+            "Beatboxer addresses and names must be the same length"
+        );
+        for (uint256 i = 0; i < beatboxerAddresses.length; i++) {
+            if (
+                beatboxerAddresses[i] != address(0) &&
+                !beatboxerByAddress[beatboxerAddresses[i]].added
+            ) {
                 beatboxerByAddress[beatboxerAddresses[i]] = Beatboxer(
                     _names[i],
                     beatboxerAddresses[i],
                     true
                 );
                 beatboxerCount.increment();
-                emit BeatboxerAdded(address(this), beatboxerAddresses[i], _names[i]);
+                emit BeatboxerAdded(
+                    address(this),
+                    beatboxerAddresses[i],
+                    _names[i]
+                );
             }
         }
     }
