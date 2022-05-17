@@ -10,67 +10,77 @@ contract BbxCompetition is AccessControl {
     bytes32 public constant HELPER_ROLE = keccak256("HELPER_ROLE");
     bytes32 public constant JUDGE_ROLE = keccak256("JUDGE_ROLE");
 
-    struct MetaData {
-        string name;
-        string description;
-        string image;
-        uint256 wildcardStart;
-        uint256 wildcardEnd;
-    }
-
-    MetaData public metaData;
-
     struct Beatboxer {
         string name;
         address beatboxerAddress;
-        bool added;
+        uint8 latestScore;
     }
 
-    // struct Judge {
-    //     string name;
-    //     address judgeAddress;
-    // }
+    struct BattleBeatboxer {
+        string videoUrl;
+        address beatboxerAddress;
+        uint8 score;
+    }
+
+    struct Point {
+        uint8 originality;
+        uint8 pitchAndTiming;
+        uint8 complexity;
+        uint8 enjoymentOfListening;
+        uint8 video;
+        uint8 audio;
+        uint8 battle;
+        uint8 extraPoint;
+        address votedBy;
+        address votedFor;
+        // uint8 crowdVote;
+    }
 
     struct Battle {
         uint256 id;
-        address beatboxerOneAddress;
-        address beatboxerTwoAddress;
+        BattleBeatboxer beatboxerOne;
+        BattleBeatboxer beatboxerTwo;
         address winnerAddress;
-        uint256 beatboxerOneScore;
-        uint256 beatboxerTwoScore;
         uint256 startTime;
         uint256 endTime;
         uint256 winningAmount;
         uint256 totalVotes;
+        CompetitionState category;
         string name;
-        string category;
     }
 
-    struct Point {
-        uint256 originality;
-        uint256 pitchAndTiming;
-        uint256 complexity;
-        uint256 enjoymentOfListening;
-        uint256 video;
-        uint256 audio;
-        uint256 battle;
-        uint256 extraPoint;
-        // uint256 crowdVote;
+    enum CompetitionState {
+        NOT_STARTED,
+        WILDCARD,
+        TOP16,
+        TOP8,
+        SEMIFINAL,
+        FINAL,
+        COMPLETED
     }
 
+    struct MetaData {
+        string name;
+        string description;
+        string image;
+        CompetitionState competitionState;
+    }
+
+    MetaData public metaData;
     Battle[] public battles;
-    // Judge[] public judges;
-    mapping(address => Beatboxer) public beatboxerByAddress;
-    mapping(uint256 => mapping(address => Point)) public battlePoints;
-    mapping(uint256 => mapping(address => bool)) public judgeVoted;
-    Counters.Counter public beatboxerCount;
+    Beatboxer[] public beatboxers;
     Counters.Counter public judgeCount;
+    mapping(address => uint256) public beatboxerIndexByAddress;
+    mapping(CompetitionState => mapping(address => bool))
+        private beatboxerSelectedByCategory;
+    mapping(uint256 => mapping(address => bool)) public judgeVoted;
+    mapping(uint256 => Point[]) public pointsByBattle;
 
     event BattleCreated(
         address competitionAddress,
         uint256 id,
         string name,
-        string category,
+        CompetitionState category,
         address beatboxerOneAddress,
         address beatboxerTwoAddress,
         uint256 startTime,
@@ -123,76 +133,88 @@ contract BbxCompetition is AccessControl {
     error NotAdminOrHelper();
 
     constructor(
-        string memory _name,
+        string memory name,
         address contractOwner,
-        string memory _description,
-        string memory _image,
-        uint256 _wildcardStart,
-        uint256 _wildcardEnd
+        string memory description,
+        string memory image
     ) {
-        metaData = MetaData({
-            name: _name,
-            description: _description,
-            image: _image,
-            wildcardStart: _wildcardStart,
-            wildcardEnd: _wildcardEnd
-        });
+        metaData = MetaData(
+            name,
+            description,
+            image,
+            CompetitionState.NOT_STARTED
+        );
         _setupRole(DEFAULT_ADMIN_ROLE, contractOwner);
     }
 
     function startBattle(
-        string memory _name,
-        string memory _category,
-        address _beatboxerOneAddress,
-        address _beatboxerTwoAddress,
-        uint256 _startTime,
-        uint256 _endTime,
-        uint256 _winningAmount
+        string memory name,
+        CompetitionState category,
+        address beatboxerOneAddress,
+        address beatboxerTwoAddress,
+        string memory videoUrlOne,
+        string memory videoUrlTwo,
+        uint256 startTime,
+        uint256 endTime,
+        uint256 winningAmount
     ) public isAdmin {
         require(
-            _beatboxerOneAddress != _beatboxerTwoAddress,
-            "Beatboxer addresses cannot be the same"
+            metaData.competitionState > CompetitionState.WILDCARD,
+            "Battle hasn't started yet"
         );
         require(
-            beatboxerByAddress[_beatboxerOneAddress].added &&
-                beatboxerByAddress[_beatboxerTwoAddress].added,
-            "Beatboxer addresses must be added"
+            beatboxerSelectedByCategory[category][beatboxerOneAddress] &&
+                beatboxerSelectedByCategory[category][beatboxerTwoAddress],
+            "Beatboxers are not selected for this battle"
         );
-        require(_endTime > _startTime, "End time must be after start time");
+        require(endTime > startTime, "End time must be after start time");
+
+        if (category != metaData.competitionState) {
+            metaData.competitionState = category;
+        }
 
         Battle memory battle;
-        battle.id = battles.length;
-        battle.name = _name;
-        battle.category = _category;
-        battle.beatboxerOneAddress = _beatboxerOneAddress;
-        battle.beatboxerTwoAddress = _beatboxerTwoAddress;
-        battle.startTime = _startTime;
-        battle.endTime = _endTime;
-        battle.winningAmount = _winningAmount;
+        uint256 battleId = battles.length;
+        battle.id = battleId;
+        battle.name = name;
+        battle.category = category;
+        battle.beatboxerOne = BattleBeatboxer(
+            videoUrlOne,
+            beatboxerOneAddress,
+            0
+        );
+        battle.beatboxerTwo = BattleBeatboxer(
+            videoUrlTwo,
+            beatboxerTwoAddress,
+            0
+        );
+        battle.startTime = startTime;
+        battle.endTime = endTime;
+        battle.winningAmount = winningAmount;
 
         battles.push(battle);
 
         emit BattleCreated(
             address(this),
-            battle.id,
-            battle.name,
-            battle.category,
-            battle.beatboxerOneAddress,
-            battle.beatboxerTwoAddress,
-            battle.startTime,
-            battle.endTime,
-            battle.winningAmount
+            battleId,
+            name,
+            category,
+            beatboxerOneAddress,
+            beatboxerTwoAddress,
+            startTime,
+            endTime,
+            winningAmount
         );
     }
 
     function voteBattle(
         uint256 battleId,
-        Point memory point1,
-        Point memory point2
+        Point calldata point1,
+        Point calldata point2
     ) public isJudge {
         require(battleId < battles.length, "Battle id out of range");
         Battle storage battle = battles[battleId];
-        require(battle.winnerAddress != address(0), "Battle already finished");
+        require(battle.winnerAddress == address(0), "Battle already finished");
         require(
             battle.startTime <= block.timestamp &&
                 battle.endTime >= block.timestamp,
@@ -202,19 +224,22 @@ contract BbxCompetition is AccessControl {
             judgeVoted[battleId][msg.sender] == false,
             "You have already voted for this battle"
         );
-        battlePoints[battleId][battle.beatboxerOneAddress] = point1;
-        battlePoints[battleId][battle.beatboxerTwoAddress] = point2;
-        battle.beatboxerOneScore += _calculateScore(point1);
-        battle.beatboxerTwoScore += _calculateScore(point2);
+        battle.beatboxerOne.score += _calculateScore(point1);
+        battle.beatboxerTwo.score += _calculateScore(point2);
+        pointsByBattle[battleId].push(point1);
+        pointsByBattle[battleId].push(point2);
         battle.totalVotes++;
         judgeVoted[battleId][msg.sender] = true;
-        if (judgeCount.current() == battle.totalVotes) {}
+        if (judgeCount.current() == battle.totalVotes) {
+            // TODO: Calculate winner
+            // after winning set beatboxerSelectedByCategory and also set last score of beatboxer
+        }
     }
 
-    function _calculateScore(Point memory point)
+    function _calculateScore(Point calldata point)
         private
         pure
-        returns (uint256)
+        returns (uint8)
     {
         return
             point.originality +
@@ -231,20 +256,17 @@ contract BbxCompetition is AccessControl {
         public
         isAdminOrHelper
     {
-        if (!hasRole(JUDGE_ROLE, judgeAddress)) {
-            // judges.push(Judge(_name, judgeAddress));
-            _setupRole(JUDGE_ROLE, judgeAddress);
-            judgeCount.increment();
-            emit JudgeAdded(address(this), judgeAddress, _name);
-        }
+        require(!hasRole(JUDGE_ROLE, judgeAddress), "Judge already exists");
+        _setupRole(JUDGE_ROLE, judgeAddress);
+        judgeCount.increment();
+        emit JudgeAdded(address(this), judgeAddress, _name);
     }
 
     function removeJudge(address judgeAddress) public isAdminOrHelper {
-        if (hasRole(JUDGE_ROLE, judgeAddress)) {
-            _revokeRole(JUDGE_ROLE, judgeAddress);
-            judgeCount.decrement();
-            emit JudgeRemoved(address(this), judgeAddress);
-        }
+        require(hasRole(JUDGE_ROLE, judgeAddress), "Judge does not exist");
+        _revokeRole(JUDGE_ROLE, judgeAddress);
+        judgeCount.decrement();
+        emit JudgeRemoved(address(this), judgeAddress);
     }
 
     function addBeatboxer(address beatboxerAddress, string memory _name)
@@ -256,15 +278,16 @@ contract BbxCompetition is AccessControl {
             "Beatboxer address cannot be 0"
         );
         require(
-            beatboxerByAddress[beatboxerAddress].added == false,
+            !beatboxerSelectedByCategory[CompetitionState.TOP16][
+                beatboxerAddress
+            ],
             "Beatboxer already exists"
         );
-        beatboxerByAddress[beatboxerAddress] = Beatboxer(
-            _name,
-            beatboxerAddress,
-            true
-        );
-        beatboxerCount.increment();
+        beatboxerSelectedByCategory[CompetitionState.TOP16][
+            beatboxerAddress
+        ] = true;
+        beatboxerIndexByAddress[beatboxerAddress] = beatboxers.length;
+        beatboxers.push(Beatboxer(_name, beatboxerAddress, 0));
         emit BeatboxerAdded(address(this), beatboxerAddress, _name);
     }
 
@@ -279,14 +302,16 @@ contract BbxCompetition is AccessControl {
         for (uint256 i = 0; i < beatboxerAddresses.length; i++) {
             if (
                 beatboxerAddresses[i] != address(0) &&
-                !beatboxerByAddress[beatboxerAddresses[i]].added
+                !beatboxerSelectedByCategory[CompetitionState.TOP16][
+                    beatboxerAddresses[i]
+                ]
             ) {
-                beatboxerByAddress[beatboxerAddresses[i]] = Beatboxer(
-                    _names[i],
-                    beatboxerAddresses[i],
-                    true
-                );
-                beatboxerCount.increment();
+                beatboxerSelectedByCategory[CompetitionState.TOP16][
+                    beatboxerAddresses[i]
+                ] = true;
+                beatboxerIndexByAddress[beatboxerAddresses[i]] = beatboxers
+                    .length;
+                beatboxers.push(Beatboxer(_names[i], beatboxerAddresses[i], 0));
                 emit BeatboxerAdded(
                     address(this),
                     beatboxerAddresses[i],
@@ -298,11 +323,21 @@ contract BbxCompetition is AccessControl {
 
     function removeBeatboxer(address beatboxerAddress) public isAdminOrHelper {
         require(
-            beatboxerByAddress[beatboxerAddress].added == true,
+            beatboxerSelectedByCategory[CompetitionState.TOP16][
+                beatboxerAddress
+            ],
             "Beatboxer does not exist"
         );
-        delete beatboxerByAddress[beatboxerAddress];
-        beatboxerCount.decrement();
+        delete beatboxerSelectedByCategory[CompetitionState.TOP16][
+            beatboxerAddress
+        ];
+        uint256 index = beatboxerIndexByAddress[beatboxerAddress];
+        uint256 lastIndex = beatboxers.length - 1;
+        Beatboxer memory _beatboxer = beatboxers[lastIndex];
+        beatboxers[index] = _beatboxer;
+        beatboxerIndexByAddress[_beatboxer.beatboxerAddress] = index;
+        delete beatboxers[lastIndex];
+        delete beatboxerIndexByAddress[beatboxerAddress];
         emit BeatboxerRemoved(address(this), beatboxerAddress);
     }
 
@@ -316,6 +351,92 @@ contract BbxCompetition is AccessControl {
 
     function setImage(string memory _image) public isAdmin {
         metaData.image = _image;
+    }
+
+    function startWildcard() external isAdmin {
+        require(
+            metaData.competitionState == CompetitionState.NOT_STARTED,
+            "Competition has already started"
+        );
+        metaData.competitionState = CompetitionState.WILDCARD;
+    }
+
+    function endWildcard() external isAdmin {
+        require(
+            metaData.competitionState == CompetitionState.WILDCARD,
+            "Competition has not started"
+        );
+        metaData.competitionState = CompetitionState.TOP16;
+    }
+
+    function getAllBattles() external view returns (Battle[] memory) {
+        return battles;
+    }
+
+    function getCurrentBeatboxers() external view returns (Beatboxer[] memory) {
+        uint256 totalBeatboxers;
+        uint256 counter;
+        if (metaData.competitionState <= CompetitionState.TOP16) {
+            return beatboxers;
+        }
+        if (metaData.competitionState == CompetitionState.TOP8) {
+            totalBeatboxers = 8;
+        } else if (metaData.competitionState == CompetitionState.SEMIFINAL) {
+            totalBeatboxers = 4;
+        } else {
+            totalBeatboxers = 2;
+        }
+        Beatboxer[] memory _beatboxers = new Beatboxer[](totalBeatboxers);
+        for (uint256 i; i < totalBeatboxers; i++) {
+            if (
+                beatboxerSelectedByCategory[metaData.competitionState][
+                    beatboxers[i].beatboxerAddress
+                ]
+            ) {
+                _beatboxers[counter] = beatboxers[i];
+                counter++;
+            }
+        }
+        return _beatboxers;
+    }
+
+    function getVotedBattlesIndices(address judge)
+        external
+        view
+        returns (uint256[] memory)
+    {
+        if (!hasRole(JUDGE_ROLE, judge)) {
+            return new uint256[](0);
+        }
+        uint256 indicesCount = 0;
+        uint256 counter;
+        for (uint256 i = 0; i < battles.length; i++) {
+            if (judgeVoted[i][judge]) {
+                indicesCount++;
+            }
+        }
+        uint256[] memory votedBattlesIndices = new uint256[](indicesCount);
+        for (uint256 i = 0; i < battles.length; i++) {
+            if (judgeVoted[i][judge]) {
+                votedBattlesIndices[counter] = i;
+                counter++;
+            }
+        }
+        return votedBattlesIndices;
+    }
+
+    function getRoles(address _address) external view returns (bool[] memory) {
+        bool[] memory roles = new bool[](3);
+        if (hasRole(DEFAULT_ADMIN_ROLE, _address)) {
+            roles[0] = true;
+        }
+        if (hasRole(HELPER_ROLE, _address)) {
+            roles[1] = true;
+        }
+        if (hasRole(JUDGE_ROLE, _address)) {
+            roles[2] = true;
+        }
+        return roles;
     }
 
     receive() external payable {

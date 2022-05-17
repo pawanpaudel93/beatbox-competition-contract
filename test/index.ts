@@ -26,16 +26,10 @@ describe("CompetitionFactory", () => {
     });
 
     it("Should deploy and create a beatbox competition contract", async () => {
-        const wildcardStart = Math.floor(new Date().getTime() / 1000);
-        const wildcardEnd = Math.floor(
-            new Date().getTime() / 100 + 30 * 24 * 60 * 60
-        );
         const beatboxTx = await competitionFactory.createCompetition(
             "BBU",
             "BBU competition",
-            "ipfs://hash",
-            wildcardStart,
-            wildcardEnd
+            "ipfs://hash"
         );
         const receipt = await beatboxTx.wait();
         expect(receipt)
@@ -44,8 +38,6 @@ describe("CompetitionFactory", () => {
                 0,
                 "BBU",
                 await deployer.getAddress(),
-                wildcardStart,
-                wildcardEnd,
                 receipt.events![0].address,
                 "BBU Competition",
                 "ipfs://hash"
@@ -63,13 +55,7 @@ describe("CompetitionFactory", () => {
     it("Should be able to create a battle", async () => {
         const beatboxTx = await competitionFactory
             .connect(competitionCreator)
-            .createCompetition(
-                "BBU",
-                "BBU competition",
-                "ipfs://hash",
-                Math.floor(new Date().getTime() / 1000),
-                Math.floor(new Date().getTime() / 100 + 30 * 24 * 60 * 60)
-            );
+            .createCompetition("BBU", "BBU competition", "ipfs://hash");
         const receipt = await beatboxTx.wait();
         const beatboxCompetitionAddress = receipt.events?.find(
             (event) => event.event === "CompetitionCreated"
@@ -92,8 +78,11 @@ describe("CompetitionFactory", () => {
         const winningAmount = ethers.utils.parseEther("0.1");
         const battleTx = await beatboxCompetition.startBattle(
             "Helium vs. Inertia",
+            2,
             beatboxerOneAddress,
             beatboxerTwoAddress,
+            "dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
             battleStartTime,
             battleEndTime,
             winningAmount

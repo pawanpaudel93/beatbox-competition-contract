@@ -7,8 +7,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract CompetitionFactory is Ownable {
     struct Competition {
         uint256 competitionId;
-        uint256 wildcardStart;
-        uint256 wildcardEnd;
         string name;
         string description;
         string image;
@@ -18,10 +16,8 @@ contract CompetitionFactory is Ownable {
 
     event CompetitionCreated(
         uint256 indexed competitionId,
-        string indexed name,
+        string name,
         address indexed creator,
-        uint256 wildcardStart,
-        uint256 wildcardEnd,
         address contractAddress,
         string description,
         string image
@@ -34,25 +30,19 @@ contract CompetitionFactory is Ownable {
     function createCompetition(
         string memory name,
         string memory description,
-        string memory image,
-        uint256 wildcardStart,
-        uint256 wildcardEnd
+        string memory image
     ) external returns (address) {
         BbxCompetition bbxCompetition = new BbxCompetition(
             name,
             msg.sender,
             description,
-            image,
-            wildcardStart,
-            wildcardEnd
+            image
         );
         uint256 competitionId = competitions.length;
         address contractAddress = address(bbxCompetition);
         competitions.push(
             Competition(
                 competitionId,
-                wildcardStart,
-                wildcardEnd,
                 name,
                 description,
                 image,
@@ -64,8 +54,6 @@ contract CompetitionFactory is Ownable {
             competitionId,
             name,
             msg.sender,
-            wildcardStart,
-            wildcardEnd,
             contractAddress,
             description,
             image
