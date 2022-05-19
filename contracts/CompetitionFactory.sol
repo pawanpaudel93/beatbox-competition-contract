@@ -30,13 +30,19 @@ contract CompetitionFactory is Ownable {
     function createCompetition(
         string memory name,
         string memory description,
-        string memory image
+        string memory image,
+        address chainlinkToken,
+        address chainlinkOracle,
+        bytes32 chainlinkJobId
     ) external returns (address) {
-        BbxCompetition bbxCompetition = new BbxCompetition(
+        BeatboxCompetition bbxCompetition = new BeatboxCompetition(
             name,
             msg.sender,
             description,
-            image
+            image,
+            chainlinkToken,
+            chainlinkOracle,
+            chainlinkJobId
         );
         uint256 competitionId = competitions.length;
         address contractAddress = address(bbxCompetition);

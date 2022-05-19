@@ -3,7 +3,7 @@ import { Signer } from "ethers";
 import { ethers, deployments } from "hardhat";
 import {
     CompetitionFactory as CompetitionFactoryContract,
-    BbxCompetition as BbxCompetitionContract,
+    BeatboxCompetition as BbxCompetitionContract,
 } from "./../typechain";
 
 describe("CompetitionFactory", () => {
@@ -29,7 +29,10 @@ describe("CompetitionFactory", () => {
         const beatboxTx = await competitionFactory.createCompetition(
             "BBU",
             "BBU competition",
-            "ipfs://hash"
+            "ipfs://hash",
+            process.env.CHAINLINK_TOKEN!,
+            process.env.CHAINLINK_ORACLE!,
+            process.env.CHAINLINK_JOBID!
         );
         const receipt = await beatboxTx.wait();
         expect(receipt)
@@ -40,7 +43,10 @@ describe("CompetitionFactory", () => {
                 await deployer.getAddress(),
                 receipt.events![0].address,
                 "BBU Competition",
-                "ipfs://hash"
+                "ipfs://hash",
+                process.env.CHAINLINK_TOKEN!,
+                process.env.CHAINLINK_ORACLE!,
+                process.env.CHAINLINK_JOBID!
             );
         expect((await competitionFactory.competitions(0)).name).to.equal("BBU");
         expect(
@@ -55,24 +61,31 @@ describe("CompetitionFactory", () => {
     it("Should be able to create a battle", async () => {
         const beatboxTx = await competitionFactory
             .connect(competitionCreator)
-            .createCompetition("BBU", "BBU competition", "ipfs://hash");
+            .createCompetition(
+                "BBU",
+                "BBU competition",
+                "ipfs://hash",
+                process.env.CHAINLINK_TOKEN!,
+                process.env.CHAINLINK_ORACLE!,
+                process.env.CHAINLINK_JOBID!
+            );
         const receipt = await beatboxTx.wait();
         const beatboxCompetitionAddress = receipt.events?.find(
             (event) => event.event === "CompetitionCreated"
         )?.address!;
         const beatboxCompetition: BbxCompetitionContract =
             await ethers.getContractAt(
-                "BbxCompetition",
+                "BeatboxCompetition",
                 beatboxCompetitionAddress
             );
         const beatboxerOneAddress = await beatboxerOne.getAddress();
         const beatboxerTwoAddress = await beatboxerTwo.getAddress();
         await beatboxCompetition
             .connect(competitionCreator)
-            .addBeatboxer(beatboxerOneAddress, "Beatboxer One");
-        await beatboxCompetition
-            .connect(competitionCreator)
-            .addBeatboxer(beatboxerTwoAddress, "Beatboxer Two");
+            .addBeatboxers(
+                [beatboxerOneAddress, beatboxerTwoAddress],
+                ["Beatboxer One", "Beatboxer Two"]
+            );
         const battleStartTime = Math.floor(new Date().getTime() / 1000);
         const battleEndTime = battleStartTime + 24 * 60 * 60; // 1 day
         const winningAmount = ethers.utils.parseEther("0.1");
@@ -81,8 +94,8 @@ describe("CompetitionFactory", () => {
             2,
             beatboxerOneAddress,
             beatboxerTwoAddress,
-            "dQw4w9WgXcQ",
-            "dQw4w9WgXcQ",
+            ethers.utils.formatBytes32String("dQw4w9WgXcQ").slice(0, 24),
+            ethers.utils.formatBytes32String("dQw4w9WgXcQ").slice(0, 24),
             battleStartTime,
             battleEndTime,
             winningAmount
