@@ -204,7 +204,7 @@ contract BeatboxCompetition is
         pointsByBattle[battleId].push(point1);
         pointsByBattle[battleId].push(point2);
         judgeVoted[battleId][msg.sender] = true;
-        if (judgeCount.current() == pointsByBattle[battleId].length) {
+        if (judgeCount.current() * 2 == pointsByBattle[battleId].length) {
             battleIdToUpkeepNeeded[battleId] = true;
         }
     }
