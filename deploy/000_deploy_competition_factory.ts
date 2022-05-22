@@ -1,3 +1,5 @@
+/* eslint-disable node/no-unpublished-import */
+/* eslint-disable node/no-missing-import */
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { DeployFunction } from "hardhat-deploy/types";
 
@@ -13,8 +15,9 @@ const deployCompetitionFactory: DeployFunction = async function (
         args: [
             process.env.CHAINLINK_TOKEN!,
             process.env.CHAINLINK_ORACLE!,
-            process.env.CHAINLINK_JOBID!,
             process.env.CHAINLINK_VRFCOORDINATOR!,
+            process.env.CHAINLINK_JOBID!,
+            process.env.CHAINLINK_KEYHASH!,
         ],
     });
     log(

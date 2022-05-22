@@ -1,16 +1,17 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.7;
 
-import "./BbxCompetition.sol";
+import "./competition/BeatboxCompetition.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract CompetitionFactory is Ownable {
     using Counters for Counters.Counter;
 
-    address private immutable CHAINLINK_TOKEN;
     address private immutable CHAINLINK_VRF_COORDINATOR;
+    address private immutable CHAINLINK_TOKEN;
     address private immutable CHAINLINK_ORACLE;
     bytes32 private immutable CHAINLINK_JOBID;
+    bytes32 private immutable CHAINLINK_KEYHASH;
 
     event CompetitionCreated(
         uint256 indexed competitionId,
@@ -25,13 +26,15 @@ contract CompetitionFactory is Ownable {
     constructor(
         address chainlinkToken,
         address chainlinkOracle,
+        address vrfCoordinator,
         bytes32 chainlinkJobId,
-        address vrfCoordinator
+        bytes32 chainlinkKeyhash
     ) {
         CHAINLINK_TOKEN = chainlinkToken;
         CHAINLINK_ORACLE = chainlinkOracle;
         CHAINLINK_JOBID = chainlinkJobId;
         CHAINLINK_VRF_COORDINATOR = vrfCoordinator;
+        CHAINLINK_KEYHASH = chainlinkKeyhash;
     }
 
     function createCompetition(
@@ -46,8 +49,9 @@ contract CompetitionFactory is Ownable {
             imageURI,
             CHAINLINK_TOKEN,
             CHAINLINK_ORACLE,
+            CHAINLINK_VRF_COORDINATOR,
             CHAINLINK_JOBID,
-            CHAINLINK_VRF_COORDINATOR
+            CHAINLINK_KEYHASH
         );
         uint256 competitionId = totalCompetitions.current();
         address contractAddress = address(bbxCompetition);

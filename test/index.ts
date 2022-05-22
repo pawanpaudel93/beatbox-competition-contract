@@ -17,8 +17,8 @@ describe("CompetitionFactory", () => {
 
     beforeEach(async () => {
         await deployments.fixture(["all"]);
-
-        [deployer, competitionCreator, judgeOne, judgeTwo] = await ethers.getSigners();
+        [deployer, competitionCreator, judgeOne, judgeTwo] =
+            await ethers.getSigners();
         competitionName = ethers.utils.formatBytes32String("BBU");
         competitionDescription = "Beatbox competition";
         imageURI = "ipfs://hash";
@@ -77,24 +77,26 @@ describe("CompetitionFactory", () => {
             competitionCreator
         );
         let judgeTx = await beatboxCompetition.addJudge(
-            await judgeOne.getAddress()
+            await judgeOne.getAddress(),
+            "Judge One"
         );
         await judgeTx.wait();
         judgeTx = await beatboxCompetition.addJudge(
-            await judgeTwo.getAddress()
+            await judgeTwo.getAddress(),
+            "Judge Two"
         );
         await judgeTx.wait();
         const wildcardStartTx = await beatboxCompetition.startWildcard();
         await wildcardStartTx.wait();
         const wildcardEndTx = await beatboxCompetition.endWildcard();
         await wildcardEndTx.wait();
-        await expect(
-            beatboxCompetition
-                .connect(competitionCreator)
-                .addBeatboxers(beatboxers.addresses, beatboxers.names)
-        )
-            .to.emit(beatboxCompetition, "BeatboxersAdded")
-            .withArgs();
+        // await expect(
+        //     beatboxCompetition
+        //         .connect(competitionCreator)
+        //         .addBeatboxers(beatboxers.addresses, beatboxers.names)
+        // )
+        //     .to.emit(beatboxCompetition, "BeatboxersAdded")
+        //     .withArgs();
         // const setBattleOpponentsTx =
         //     await beatboxCompetition._setBattleOpponents(1234);
         // await setBattleOpponentsTx.wait();
