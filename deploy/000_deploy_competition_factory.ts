@@ -10,7 +10,12 @@ const deployCompetitionFactory: DeployFunction = async function (
     const CompetitionFactory = await deploy("CompetitionFactory", {
         from: deployer,
         log: true,
-        args: [],
+        args: [
+            process.env.CHAINLINK_TOKEN!,
+            process.env.CHAINLINK_ORACLE!,
+            process.env.CHAINLINK_JOBID!,
+            process.env.CHAINLINK_VRFCOORDINATOR!,
+        ],
     });
     log(
         "You have deployed the CompetitionFactory contract to:",

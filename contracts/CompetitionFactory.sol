@@ -5,89 +5,62 @@ import "./BbxCompetition.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract CompetitionFactory is Ownable {
-    struct Competition {
-        uint256 competitionId;
-        string name;
-        string description;
-        string image;
-        address creator;
-        address contractAddress;
-    }
+    using Counters for Counters.Counter;
+
+    address private immutable CHAINLINK_TOKEN;
+    address private immutable CHAINLINK_VRF_COORDINATOR;
+    address private immutable CHAINLINK_ORACLE;
+    bytes32 private immutable CHAINLINK_JOBID;
 
     event CompetitionCreated(
         uint256 indexed competitionId,
-        string name,
         address indexed creator,
         address contractAddress,
+        bytes32 name,
         string description,
-        string image
+        string imageURI
     );
+    Counters.Counter public totalCompetitions;
 
-    Competition[] public competitions;
-
-    constructor() {}
-
-    function createCompetition(
-        string memory name,
-        string memory description,
-        string memory image,
+    constructor(
         address chainlinkToken,
         address chainlinkOracle,
-        bytes32 chainlinkJobId
+        bytes32 chainlinkJobId,
+        address vrfCoordinator
+    ) {
+        CHAINLINK_TOKEN = chainlinkToken;
+        CHAINLINK_ORACLE = chainlinkOracle;
+        CHAINLINK_JOBID = chainlinkJobId;
+        CHAINLINK_VRF_COORDINATOR = vrfCoordinator;
+    }
+
+    function createCompetition(
+        bytes32 name,
+        string memory description,
+        string memory imageURI
     ) external returns (address) {
         BeatboxCompetition bbxCompetition = new BeatboxCompetition(
             name,
             msg.sender,
             description,
-            image,
-            chainlinkToken,
-            chainlinkOracle,
-            chainlinkJobId
+            imageURI,
+            CHAINLINK_TOKEN,
+            CHAINLINK_ORACLE,
+            CHAINLINK_JOBID,
+            CHAINLINK_VRF_COORDINATOR
         );
-        uint256 competitionId = competitions.length;
+        uint256 competitionId = totalCompetitions.current();
         address contractAddress = address(bbxCompetition);
-        competitions.push(
-            Competition(
-                competitionId,
-                name,
-                description,
-                image,
-                msg.sender,
-                contractAddress
-            )
-        );
+        totalCompetitions.increment();
         emit CompetitionCreated(
             competitionId,
-            name,
             msg.sender,
             contractAddress,
+            name,
             description,
-            image
+            imageURI
         );
         return contractAddress;
-    }
-
-    function getCompetitionsByCreator(address creator)
-        external
-        view
-        returns (Competition[] memory)
-    {
-        uint256 totalCompetitions = 0;
-        uint256 counter = 0;
-        for (uint256 i = 0; i < competitions.length; i++) {
-            if (competitions[i].creator == creator) {
-                totalCompetitions++;
-            }
-        }
-
-        Competition[] memory result = new Competition[](totalCompetitions);
-        for (uint256 i = 0; i < competitions.length; i++) {
-            if (competitions[i].creator == creator) {
-                result[counter] = competitions[i];
-                counter++;
-            }
-        }
-        return result;
     }
 
     function withdraw() external onlyOwner {
