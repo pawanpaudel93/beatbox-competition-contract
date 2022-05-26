@@ -331,4 +331,12 @@ contract CompetitionBase is AccessControl {
         }
         return roles;
     }
+
+    function getBattlePoints(uint256 battleId)
+        external
+        view
+        returns (Point[] memory)
+    {
+        return pointsByBattle[battleId];
+    }
 }

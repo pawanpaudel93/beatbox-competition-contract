@@ -97,9 +97,8 @@ describe("CompetitionFactory", () => {
         // )
         //     .to.emit(beatboxCompetition, "BeatboxersAdded")
         //     .withArgs();
-        // const setBattleOpponentsTx =
-        //     await beatboxCompetition._setBattleOpponents(1234);
-        // await setBattleOpponentsTx.wait();
+
+        // console.log(await beatboxCompetition.getCurrentBattles());
         // const battleStartTime = Math.floor(new Date().getTime() / 1000);
         // const battleEndTime = battleStartTime + 24 * 60 * 60; // 1 day
         // const winningAmount = ethers.utils.parseEther("0.1");

@@ -22,7 +22,7 @@ abstract contract ChainlinkIntegration is
 
     // Chainlink VRF
     VRFCoordinatorV2Interface internal COORDINATOR;
-    uint64 private subscriptionId;
+    uint64 public subscriptionId;
     bytes32 internal keyHash;
     uint32 private callbackGasLimit = 100000;
     uint16 private requestConfirmations = 3;
@@ -51,7 +51,8 @@ abstract contract ChainlinkIntegration is
             beatboxers.push(Beatboxer(names[i], beatboxerAddresses[i]));
         }
         metaData.competitionState = CompetitionState.TOP_SIXTEEN;
-        _randomNumberRequest();
+        // _randomNumberRequest();
+        _setBattleOpponents(12345);
         emit BeatboxersAdded();
     }
 
@@ -78,7 +79,7 @@ abstract contract ChainlinkIntegration is
             beatboxersIds,
             randomNumber
         );
-        for (uint256 i; i < (shuffledBeatboxersIds.length / 2); i = i + 2) {
+        for (uint256 i; i < shuffledBeatboxersIds.length; i += 2) {
             competitionStateToBattleOpponents[metaData.competitionState].push(
                 BattleOpponent(
                     shuffledBeatboxersIds[i],
@@ -137,6 +138,8 @@ abstract contract ChainlinkIntegration is
     ) public recordChainlinkFulfillment(requestId) {
         uint256 battleId = battles.length - 1;
         Battle storage battle = battles[battleId];
+        battle.beatboxerOne.likeCount = likeCount1;
+        battle.beatboxerTwo.likeCount = likeCount2;
         if (likeCount1 > likeCount2) {
             battle.beatboxerOne.score += 1;
         } else if (likeCount1 < likeCount2) {
@@ -146,24 +149,24 @@ abstract contract ChainlinkIntegration is
         CompetitionState currentState = metaData.competitionState;
         if (battle.beatboxerOne.score > battle.beatboxerTwo.score) {
             winnerAddress = battle.beatboxerOne.beatboxerAddress;
-            battle.beatboxerOne.likeCount = likeCount1;
-            battle.winnerAddress = winnerAddress;
-            competitionStateToBeatboxerIds[currentState].push(
-                beatboxerIndexByAddress[winnerAddress]
-            );
-            balances[winnerAddress] += battle.winningAmount;
         } else if (battle.beatboxerOne.score < battle.beatboxerTwo.score) {
             winnerAddress = battle.beatboxerTwo.beatboxerAddress;
-            battle.beatboxerTwo.likeCount = likeCount2;
-            battle.winnerAddress = winnerAddress;
-            competitionStateToBeatboxerIds[currentState].push(
-                beatboxerIndexByAddress[winnerAddress]
-            );
-            balances[winnerAddress] += battle.winningAmount;
+        } else {
+            uint256 randomIndex = uint256(
+                keccak256(abi.encode(requestId, likeCount1, likeCount2))
+            ) % 2;
+            winnerAddress = [
+                battle.beatboxerOne.beatboxerAddress,
+                battle.beatboxerTwo.beatboxerAddress
+            ][randomIndex];
         }
-        if (winnerAddress != address(0)) {
-            battleCountByState[currentState] += 1;
-        }
+        battle.winnerAddress = winnerAddress;
+        competitionStateToBeatboxerIds[currentState].push(
+            beatboxerIndexByAddress[winnerAddress]
+        );
+        balances[winnerAddress] += battle.winningAmount;
+        battleCountByState[currentState] += 1;
+
         if (
             currentState == CompetitionState.TOP_SIXTEEN &&
             battleCountByState[currentState] == 8
