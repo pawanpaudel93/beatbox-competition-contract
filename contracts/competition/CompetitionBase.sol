@@ -7,10 +7,9 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 contract CompetitionBase is AccessControl {
     using Counters for Counters.Counter;
 
-    bytes32 private constant HELPER_ROLE = keccak256("HELPER_ROLE");
-    bytes32 private constant JUDGE_ROLE = keccak256("JUDGE_ROLE");
-    uint256 public constant BEATBOXERS_COUNT = 16;
-    uint256 public constant MAX_JUDGES = 4;
+    bytes32 internal constant HELPER_ROLE = keccak256("HELPER_ROLE");
+    bytes32 internal constant JUDGE_ROLE = keccak256("JUDGE_ROLE");
+    uint256 internal constant BEATBOXERS_COUNT = 16;
 
     struct Beatboxer {
         string name;
@@ -19,8 +18,8 @@ contract CompetitionBase is AccessControl {
 
     struct BattleBeatboxer {
         bytes11 ytVideoId;
-        address beatboxerAddress;
         uint8 score;
+        uint256 beatboxerId;
         uint256 likeCount;
     }
 
@@ -34,13 +33,13 @@ contract CompetitionBase is AccessControl {
         uint8 battle;
         uint8 extraPoint;
         address votedBy;
-        address votedFor;
+        uint256 votedFor;
     }
 
     struct Battle {
         BattleBeatboxer beatboxerOne;
         BattleBeatboxer beatboxerTwo;
-        address winnerAddress;
+        uint256 winnerId;
         uint256 startTime;
         uint256 endTime;
         uint256 winningAmount;
@@ -78,21 +77,19 @@ contract CompetitionBase is AccessControl {
     Counters.Counter public judgeCount;
     bool public s_upkeepNeeded;
 
-    mapping(address => uint256) internal beatboxerIndexByAddress;
     mapping(CompetitionState => uint256[]) competitionStateToBeatboxerIds;
     mapping(CompetitionState => uint256) public battleCountByState;
     mapping(uint256 => mapping(address => bool)) public judgeVoted;
     mapping(uint256 => Point[]) public pointsByBattle;
     mapping(CompetitionState => BattleOpponent[])
         public competitionStateToBattleOpponents;
-    mapping(address => uint256) public balances;
 
     event BattleCreated(uint256 id, string name, CompetitionState state);
     event BeatboxersAdded();
     event BeatboxerRemoved(address beatboxerAddress);
     event JudgeAdded(address judgeAddress, string name);
     event JudgeRemoved(address judgeAddress);
-    event WinnerSelected(uint256 battleId, address winnerAddress);
+    event BattleVoted(uint256 battleId, address votedBy);
 
     modifier isAdmin() {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
@@ -125,14 +122,13 @@ contract CompetitionBase is AccessControl {
     function startBattle(
         uint256 stateBattleId,
         string memory name,
-        CompetitionState state,
         bytes11 ytVideoIdOne,
         bytes11 ytVideoIdTwo,
         uint256 startTime,
         uint256 endTime,
         uint256 winningAmount
     ) external isAdmin {
-        require(metaData.competitionState == state, "CompetitionStateMismatch");
+        require(address(this).balance >= winningAmount, "Not enough funds");
         BattleOpponent
             memory battleOpponent = competitionStateToBattleOpponents[
                 metaData.competitionState
@@ -143,24 +139,30 @@ contract CompetitionBase is AccessControl {
         );
         require(!battleOpponent.isCompleted, "BattleAlreadyCompleted");
         require(endTime > startTime, "EndTimeBeforeStartTime");
-        address beatboxerOneAddress = beatboxers[battleOpponent.beatboxerOneId]
-            .beatboxerAddress;
-        address beatboxerTwoAddress = beatboxers[battleOpponent.beatboxerTwoId]
-            .beatboxerAddress;
         uint256 battleId = battles.length;
         battles.push(
             Battle(
-                BattleBeatboxer(ytVideoIdOne, beatboxerOneAddress, 0, 0),
-                BattleBeatboxer(ytVideoIdTwo, beatboxerTwoAddress, 0, 0),
-                address(0),
+                BattleBeatboxer(
+                    ytVideoIdOne,
+                    0,
+                    battleOpponent.beatboxerOneId,
+                    0
+                ),
+                BattleBeatboxer(
+                    ytVideoIdTwo,
+                    0,
+                    battleOpponent.beatboxerTwoId,
+                    0
+                ),
+                BEATBOXERS_COUNT,
                 startTime,
                 endTime,
                 winningAmount,
-                state,
+                metaData.competitionState,
                 name
             )
         );
-        emit BattleCreated(battleId, name, state);
+        emit BattleCreated(battleId, name, metaData.competitionState);
     }
 
     function voteBattle(
@@ -170,21 +172,22 @@ contract CompetitionBase is AccessControl {
     ) external isJudge {
         require(battleId < battles.length, "BattleNotFound");
         Battle storage battle = battles[battleId];
-        require(battle.winnerAddress == address(0), "BattleAlreadyOver");
+        require(battle.winnerId == BEATBOXERS_COUNT, "BattleAlreadyOver");
         require(
             battle.startTime <= block.timestamp &&
                 battle.endTime >= block.timestamp,
             "BattleNotStartedOrOver"
         );
         require(judgeVoted[battleId][msg.sender] == false, "JudgeAlreadyVoted");
+        judgeVoted[battleId][msg.sender] = true;
         battle.beatboxerOne.score += _calculateScore(point1);
         battle.beatboxerTwo.score += _calculateScore(point2);
         pointsByBattle[battleId].push(point1);
         pointsByBattle[battleId].push(point2);
-        judgeVoted[battleId][msg.sender] = true;
         if (judgeCount.current() * 2 == pointsByBattle[battleId].length) {
             s_upkeepNeeded = true;
         }
+        emit BattleVoted(battleId, msg.sender);
     }
 
     function _calculateScore(Point calldata point)
@@ -211,7 +214,6 @@ contract CompetitionBase is AccessControl {
             metaData.competitionState <= CompetitionState.WILDCARD_SELECTION,
             "CompetitionStateMismatch"
         );
-        require(judgeCount.current() <= MAX_JUDGES, "TooManyJudges");
         require(!hasRole(JUDGE_ROLE, judgeAddress), "JudgeAlreadyExists");
         _setupRole(JUDGE_ROLE, judgeAddress);
         judgeCount.increment();
@@ -257,18 +259,16 @@ contract CompetitionBase is AccessControl {
         metaData.competitionState = CompetitionState.WILDCARD_SELECTION;
     }
 
-    function winnerWithdraw(uint256 amount) external {
-        require(
-            address(this).balance >= amount,
-            "InsufficientCompetitionBalance"
-        );
-        require(balances[msg.sender] >= amount, "InsufficientWinnerBalance");
-        balances[msg.sender] -= amount;
-        (bool sent, ) = msg.sender.call{value: amount}("");
-        require(sent, "FailedToSend");
-    }
-
     function withdraw(uint256 amount) external isAdmin {
+        uint256 battlesCount = battles.length;
+        require(
+            (metaData.competitionState <= CompetitionState.TOP_SIXTEEN &&
+                battlesCount == 0) ||
+                battlesCount == 0 ||
+                (battlesCount > 0 &&
+                    battles[battlesCount - 1].winnerId != BEATBOXERS_COUNT),
+            "BattlesStillInProgress"
+        );
         require(address(this).balance >= amount, "InsufficientBalance");
         (bool sent, ) = msg.sender.call{value: amount}("");
         require(sent, "FailedToSend");
