@@ -32,6 +32,7 @@ abstract contract ChainlinkIntegration is
 
     event WinnerSelected(uint256 battleId, uint256 winnerId);
     event RandomNumberRequested(uint256 requestId);
+    event OpponentsSelected(CompetitionState state);
 
     function addBeatboxers(
         address[] calldata beatboxerAddresses,
@@ -112,14 +113,19 @@ abstract contract ChainlinkIntegration is
         // Keeper will perform upkeep if both judges have voted and battle is over or if all judges havenot voted but battle is over.
         upkeepNeeded =
             (s_upkeepNeeded && battles[battleId].endTime <= block.timestamp) ||
-            battles[battleId].endTime <= block.timestamp;
+            (battles[battleId].endTime <= block.timestamp &&
+                battles[battleId].winnerId == BEATBOXERS_COUNT);
     }
 
     function performUpkeep(
         bytes calldata /* performData */
     ) external override {
         uint256 battleId = battles.length - 1;
-        if (s_upkeepNeeded && battles[battleId].endTime <= block.timestamp) {
+        if (
+            (s_upkeepNeeded && battles[battleId].endTime <= block.timestamp) ||
+            (battles[battleId].endTime <= block.timestamp &&
+                battles[battleId].winnerId == BEATBOXERS_COUNT)
+        ) {
             s_upkeepNeeded = false;
             Battle storage battle = battles[battleId];
             string memory tags = string(
@@ -146,6 +152,9 @@ abstract contract ChainlinkIntegration is
     ) public recordChainlinkFulfillment(requestId) {
         uint256 battleId = battles.length - 1;
         Battle storage battle = battles[battleId];
+        CompetitionState currentState = metaData.competitionState;
+        competitionStateToBattleOpponents[currentState][battle.stateBattleId]
+            .isCompleted = true;
         battle.beatboxerOne.likeCount = likeCount1;
         battle.beatboxerTwo.likeCount = likeCount2;
         if (likeCount1 > likeCount2) {
@@ -154,7 +163,6 @@ abstract contract ChainlinkIntegration is
             battle.beatboxerTwo.score += 1;
         }
         uint256 winnerId;
-        CompetitionState currentState = metaData.competitionState;
         if (battle.beatboxerOne.score > battle.beatboxerTwo.score) {
             winnerId = battle.beatboxerOne.beatboxerId;
         } else if (battle.beatboxerOne.score < battle.beatboxerTwo.score) {
@@ -169,7 +177,9 @@ abstract contract ChainlinkIntegration is
             ][randomIndex];
         }
         battle.winnerId = winnerId;
-        competitionStateToBeatboxerIds[currentState].push(winnerId);
+        competitionStateToBeatboxerIds[
+            CompetitionState(uint256(currentState) + 1)
+        ].push(winnerId);
         battleCountByState[currentState] += 1;
 
         if (
@@ -189,6 +199,12 @@ abstract contract ChainlinkIntegration is
             battleCountByState[currentState] == 2
         ) {
             metaData.competitionState = CompetitionState.FINAL;
+            uint256[] memory beatboxersIds = competitionStateToBeatboxerIds[
+                metaData.competitionState
+            ];
+            competitionStateToBattleOpponents[metaData.competitionState].push(
+                BattleOpponent(beatboxersIds[0], beatboxersIds[1], false)
+            );
         } else if (
             currentState == CompetitionState.FINAL &&
             battleCountByState[currentState] == 1
@@ -223,6 +239,7 @@ abstract contract ChainlinkIntegration is
         require(isRequestValid[requestId], "InvalidRequest");
         delete isRequestValid[requestId];
         _setBattleOpponents(randomWords[0]);
+        emit OpponentsSelected(metaData.competitionState);
     }
 
     function setSubscriptionId(uint64 _subscriptionId) external isAdmin {

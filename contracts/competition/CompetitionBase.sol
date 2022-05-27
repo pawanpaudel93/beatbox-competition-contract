@@ -43,6 +43,7 @@ contract CompetitionBase is AccessControl {
         uint256 startTime;
         uint256 endTime;
         uint256 winningAmount;
+        uint256 stateBattleId;
         CompetitionState state;
         string name;
     }
@@ -133,10 +134,6 @@ contract CompetitionBase is AccessControl {
             memory battleOpponent = competitionStateToBattleOpponents[
                 metaData.competitionState
             ][stateBattleId];
-        require(
-            battleOpponent.beatboxerOneId != battleOpponent.beatboxerTwoId,
-            "IdCannotBeSame"
-        );
         require(!battleOpponent.isCompleted, "BattleAlreadyCompleted");
         require(endTime > startTime, "EndTimeBeforeStartTime");
         uint256 battleId = battles.length;
@@ -158,6 +155,7 @@ contract CompetitionBase is AccessControl {
                 startTime,
                 endTime,
                 winningAmount,
+                stateBattleId,
                 metaData.competitionState,
                 name
             )
