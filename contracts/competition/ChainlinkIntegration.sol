@@ -35,30 +35,24 @@ abstract contract ChainlinkIntegration is
     event OpponentsSelected(CompetitionState state);
 
     function addBeatboxers(
-        address[] calldata beatboxerAddresses,
-        string[] calldata names
+        address[16] calldata beatboxerAddresses,
+        string[16] calldata names
     ) external isAdminOrHelper {
         require(
             metaData.competitionState == CompetitionState.WILDCARD_SELECTION,
-            "CompetitionStateMismatch"
+            "Wildcard Selection Not Active"
         );
-        require(judgeCount.current() > 0, "NoJudge");
-        require(beatboxers.length == 0, "BeatboxersAlreadyExist");
-        require(beatboxerAddresses.length == names.length, "LengthMismatch");
-        require(
-            beatboxerAddresses.length == BEATBOXERS_COUNT,
-            "TopSixteenBeatboxersOnly"
-        );
+        require(judgeCount.current() > 0, "No Judge Added");
+        metaData.competitionState = CompetitionState.TOP_SIXTEEN;
         for (uint256 i = 0; i < beatboxerAddresses.length; i++) {
             if (hasRole(JUDGE_ROLE, beatboxerAddresses[i])) {
                 revert("JudgeCannotBeBeatboxer");
             }
             competitionStateToBeatboxerIds[CompetitionState.TOP_SIXTEEN].push(
-                beatboxers.length
+                i
             );
-            beatboxers.push(Beatboxer(names[i], beatboxerAddresses[i]));
+            beatboxers[i] = (Beatboxer(names[i], beatboxerAddresses[i]));
         }
-        metaData.competitionState = CompetitionState.TOP_SIXTEEN;
         _randomNumberRequest();
         emit BeatboxersAdded();
     }
@@ -153,8 +147,6 @@ abstract contract ChainlinkIntegration is
         uint256 battleId = battles.length - 1;
         Battle storage battle = battles[battleId];
         CompetitionState currentState = metaData.competitionState;
-        competitionStateToBattleOpponents[currentState][battle.stateBattleId]
-            .isCompleted = true;
         battle.beatboxerOne.likeCount = likeCount1;
         battle.beatboxerTwo.likeCount = likeCount2;
         if (likeCount1 > likeCount2) {
@@ -215,7 +207,7 @@ abstract contract ChainlinkIntegration is
             (bool sent, ) = beatboxers[winnerId].beatboxerAddress.call{
                 value: battle.winningAmount
             }("");
-            require(sent, "PaymentNotSent");
+            require(sent, "Payment not sent");
         }
         emit WinnerSelected(battleId, battle.winnerId);
     }
@@ -236,7 +228,7 @@ abstract contract ChainlinkIntegration is
         internal
         override
     {
-        require(isRequestValid[requestId], "InvalidRequest");
+        require(isRequestValid[requestId], "Invalid request");
         delete isRequestValid[requestId];
         _setBattleOpponents(randomWords[0]);
         emit OpponentsSelected(metaData.competitionState);

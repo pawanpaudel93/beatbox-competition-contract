@@ -43,7 +43,6 @@ contract CompetitionBase is AccessControl {
         uint256 startTime;
         uint256 endTime;
         uint256 winningAmount;
-        uint256 stateBattleId;
         CompetitionState state;
         string name;
     }
@@ -74,7 +73,7 @@ contract CompetitionBase is AccessControl {
 
     MetaData public metaData;
     Battle[] public battles;
-    Beatboxer[] public beatboxers;
+    Beatboxer[BEATBOXERS_COUNT] public beatboxers;
     Counters.Counter public judgeCount;
     bool public s_upkeepNeeded;
 
@@ -130,12 +129,15 @@ contract CompetitionBase is AccessControl {
         uint256 winningAmount
     ) external isAdmin {
         require(address(this).balance >= winningAmount, "Not enough funds");
+        CompetitionState state = metaData.competitionState;
         BattleOpponent
-            memory battleOpponent = competitionStateToBattleOpponents[
-                metaData.competitionState
-            ][stateBattleId];
-        require(!battleOpponent.isCompleted, "BattleAlreadyCompleted");
-        require(endTime > startTime, "EndTimeBeforeStartTime");
+            memory battleOpponent = competitionStateToBattleOpponents[state][
+                stateBattleId
+            ];
+        require(!battleOpponent.isCompleted, "Battle already completed");
+        require(endTime > startTime, "Endtime before starttime");
+        competitionStateToBattleOpponents[state][stateBattleId]
+            .isCompleted = true;
         uint256 battleId = battles.length;
         battles.push(
             Battle(
@@ -155,12 +157,11 @@ contract CompetitionBase is AccessControl {
                 startTime,
                 endTime,
                 winningAmount,
-                stateBattleId,
-                metaData.competitionState,
+                state,
                 name
             )
         );
-        emit BattleCreated(battleId, name, metaData.competitionState);
+        emit BattleCreated(battleId, name, state);
     }
 
     function voteBattle(
@@ -170,13 +171,13 @@ contract CompetitionBase is AccessControl {
     ) external isJudge {
         require(battleId < battles.length, "BattleNotFound");
         Battle storage battle = battles[battleId];
-        require(battle.winnerId == BEATBOXERS_COUNT, "BattleAlreadyOver");
+        require(battle.winnerId == BEATBOXERS_COUNT, "Battle already over");
+        require(battle.startTime <= block.timestamp, "Battle not started");
+        require(battle.endTime >= block.timestamp, "Battle already over");
         require(
-            battle.startTime <= block.timestamp &&
-                battle.endTime >= block.timestamp,
-            "BattleNotStartedOrOver"
+            judgeVoted[battleId][msg.sender] == false,
+            "Judge already voted"
         );
-        require(judgeVoted[battleId][msg.sender] == false, "JudgeAlreadyVoted");
         judgeVoted[battleId][msg.sender] = true;
         battle.beatboxerOne.score += _calculateScore(point1);
         battle.beatboxerTwo.score += _calculateScore(point2);
@@ -210,9 +211,9 @@ contract CompetitionBase is AccessControl {
     {
         require(
             metaData.competitionState <= CompetitionState.WILDCARD_SELECTION,
-            "CompetitionStateMismatch"
+            "Cannot add judge"
         );
-        require(!hasRole(JUDGE_ROLE, judgeAddress), "JudgeAlreadyExists");
+        require(!hasRole(JUDGE_ROLE, judgeAddress), "Judge already exists");
         _setupRole(JUDGE_ROLE, judgeAddress);
         judgeCount.increment();
         emit JudgeAdded(judgeAddress, _name);
@@ -221,9 +222,9 @@ contract CompetitionBase is AccessControl {
     function removeJudge(address judgeAddress) external isAdminOrHelper {
         require(
             metaData.competitionState <= CompetitionState.WILDCARD_SELECTION,
-            "CompetitionStateMismatch"
+            "Cannot remove judge"
         );
-        require(hasRole(JUDGE_ROLE, judgeAddress), "JudgeNotFound");
+        require(hasRole(JUDGE_ROLE, judgeAddress), "Judge not found");
         _revokeRole(JUDGE_ROLE, judgeAddress);
         judgeCount.decrement();
         emit JudgeRemoved(judgeAddress);
@@ -244,7 +245,7 @@ contract CompetitionBase is AccessControl {
     function startWildcard() external isAdmin {
         require(
             metaData.competitionState == CompetitionState.NOT_STARTED,
-            "CompetitionAlreadyStarted"
+            "Competition already started"
         );
         metaData.competitionState = CompetitionState.WILDCARD_SUBMISSION;
     }
@@ -252,7 +253,7 @@ contract CompetitionBase is AccessControl {
     function endWildcard() external isAdmin {
         require(
             metaData.competitionState == CompetitionState.WILDCARD_SUBMISSION,
-            "CompetitionNotStarted"
+            "Competition not started"
         );
         metaData.competitionState = CompetitionState.WILDCARD_SELECTION;
     }
@@ -265,11 +266,11 @@ contract CompetitionBase is AccessControl {
                 battlesCount == 0 ||
                 (battlesCount > 0 &&
                     battles[battlesCount - 1].winnerId != BEATBOXERS_COUNT),
-            "BattlesStillInProgress"
+            "Battles still in progress"
         );
-        require(address(this).balance >= amount, "InsufficientBalance");
+        require(address(this).balance >= amount, "Insufficient balance");
         (bool sent, ) = msg.sender.call{value: amount}("");
-        require(sent, "FailedToSend");
+        require(sent, "Failed to Send");
     }
 
     function getAllBattles() external view returns (Battle[] memory) {

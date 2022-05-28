@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { Signer, Contract, Event } from "ethers";
 import { ethers, deployments } from "hardhat";
+// eslint-disable-next-line node/no-missing-import
 import { generateRandomBeatboxers } from "./../utils";
 
 describe("CompetitionFactory", () => {
@@ -146,5 +147,16 @@ describe("CompetitionFactory", () => {
         await expect(battleTx)
             .to.emit(beatboxCompetition, "BattleCreated")
             .withArgs(0, "Helium vs. Inertia", 3);
+        await expect(
+            beatboxCompetition.startBattle(
+                0,
+                "Helium vs. Inertia",
+                ethers.utils.formatBytes32String("dQw4w9WgXcQ").slice(0, 24),
+                ethers.utils.formatBytes32String("dQw4w9WgXcQ").slice(0, 24),
+                battleStartTime,
+                battleEndTime,
+                winningAmount
+            )
+        ).to.be.revertedWith("BattleAlreadyCompleted");
     });
 });
