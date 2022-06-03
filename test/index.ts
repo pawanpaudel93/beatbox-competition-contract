@@ -130,7 +130,7 @@ describe("CompetitionFactory", () => {
             receipt.events.find((e: any) => e.event === "RandomWordsFulfilled")
                 .args.success
         ).to.equal(true);
-        expect((await beatboxCompetition.getCurrentBattles()).length).equals(8);
+        expect((await beatboxCompetition.getCurrentOpponents()).length).equals(8);
         const battleStartTime = Math.floor(new Date().getTime() / 1000);
         const battleEndTime = battleStartTime + 24 * 60 * 60; // 1 day
         const winningAmount = ethers.utils.parseEther("0.1");
@@ -157,6 +157,6 @@ describe("CompetitionFactory", () => {
                 battleEndTime,
                 winningAmount
             )
-        ).to.be.revertedWith("BattleAlreadyCompleted");
+        ).to.be.revertedWith("Battle already started");
     });
 });

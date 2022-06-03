@@ -10,6 +10,7 @@ contract CompetitionBase is AccessControl {
     bytes32 internal constant HELPER_ROLE = keccak256("HELPER_ROLE");
     bytes32 internal constant JUDGE_ROLE = keccak256("JUDGE_ROLE");
     uint256 internal constant BEATBOXERS_COUNT = 16;
+    uint256 internal constant JUDGES_MIN_COUNT = 2;
 
     struct Beatboxer {
         string name;
@@ -50,7 +51,7 @@ contract CompetitionBase is AccessControl {
     struct BattleOpponent {
         uint256 beatboxerOneId;
         uint256 beatboxerTwoId;
-        bool isCompleted;
+        bool isStarted;
     }
 
     struct MetaData {
@@ -89,6 +90,8 @@ contract CompetitionBase is AccessControl {
     event BeatboxerRemoved(address beatboxerAddress);
     event JudgeAdded(address judgeAddress, string name);
     event JudgeRemoved(address judgeAddress);
+    event HelperAdded(address helperAddress, string name);
+    event HelperRemoved(address helperAddress);
     event BattleVoted(uint256 battleId, address votedBy);
 
     modifier isAdmin() {
@@ -134,10 +137,10 @@ contract CompetitionBase is AccessControl {
             memory battleOpponent = competitionStateToBattleOpponents[state][
                 stateBattleId
             ];
-        require(!battleOpponent.isCompleted, "Battle already completed");
+        require(!battleOpponent.isStarted, "Battle already started");
         require(endTime > startTime, "Endtime before starttime");
         competitionStateToBattleOpponents[state][stateBattleId]
-            .isCompleted = true;
+            .isStarted = true;
         uint256 battleId = battles.length;
         battles.push(
             Battle(
@@ -169,15 +172,12 @@ contract CompetitionBase is AccessControl {
         Point calldata point1,
         Point calldata point2
     ) external isJudge {
-        require(battleId < battles.length, "BattleNotFound");
+        require(battleId < battles.length, "Battle not found");
         Battle storage battle = battles[battleId];
         require(battle.winnerId == BEATBOXERS_COUNT, "Battle already over");
         require(battle.startTime <= block.timestamp, "Battle not started");
         require(battle.endTime >= block.timestamp, "Battle already over");
-        require(
-            judgeVoted[battleId][msg.sender] == false,
-            "Judge already voted"
-        );
+        require(!judgeVoted[battleId][msg.sender], "Judge already voted");
         judgeVoted[battleId][msg.sender] = true;
         battle.beatboxerOne.score += _calculateScore(point1);
         battle.beatboxerTwo.score += _calculateScore(point2);
@@ -205,7 +205,7 @@ contract CompetitionBase is AccessControl {
             point.extraPoint;
     }
 
-    function addJudge(address judgeAddress, string memory _name)
+    function addJudge(address judgeAddress, string memory name)
         external
         isAdminOrHelper
     {
@@ -216,7 +216,7 @@ contract CompetitionBase is AccessControl {
         require(!hasRole(JUDGE_ROLE, judgeAddress), "Judge already exists");
         _setupRole(JUDGE_ROLE, judgeAddress);
         judgeCount.increment();
-        emit JudgeAdded(judgeAddress, _name);
+        emit JudgeAdded(judgeAddress, name);
     }
 
     function removeJudge(address judgeAddress) external isAdminOrHelper {
@@ -228,6 +228,21 @@ contract CompetitionBase is AccessControl {
         _revokeRole(JUDGE_ROLE, judgeAddress);
         judgeCount.decrement();
         emit JudgeRemoved(judgeAddress);
+    }
+
+    function addHelper(address helperAddress, string memory name)
+        external
+        isAdminOrHelper
+    {
+        require(!hasRole(HELPER_ROLE, helperAddress), "Helper already exists");
+        _setupRole(HELPER_ROLE, helperAddress);
+        emit HelperAdded(helperAddress, name);
+    }
+
+    function removeHelper(address helperAddress) external isAdminOrHelper {
+        require(hasRole(HELPER_ROLE, helperAddress), "Helper not found");
+        _revokeRole(HELPER_ROLE, helperAddress);
+        emit HelperRemoved(helperAddress);
     }
 
     function setName(bytes32 name) external isAdmin {
@@ -277,19 +292,38 @@ contract CompetitionBase is AccessControl {
         return battles;
     }
 
-    function getCurrentBattles() external view returns (Beatboxer[2][] memory) {
+    function getCurrentOpponents()
+        external
+        view
+        returns (Beatboxer[2][] memory)
+    {
+        uint256 battlesCount;
+        uint256 counter;
+
         BattleOpponent[]
             memory battleOpponents = competitionStateToBattleOpponents[
                 metaData.competitionState
             ];
-        Beatboxer[2][] memory _beatboxers = new Beatboxer[2][](
-            battleOpponents.length
+
+        for (uint256 i; i < battleOpponents.length; i++) {
+            if (!battleOpponents[i].isStarted) {
+                battlesCount++;
+            }
+        }
+
+        Beatboxer[2][] memory currentOpponents = new Beatboxer[2][](
+            battlesCount
         );
         for (uint256 i; i < battleOpponents.length; i++) {
-            _beatboxers[i][0] = beatboxers[battleOpponents[i].beatboxerOneId];
-            _beatboxers[i][1] = beatboxers[battleOpponents[i].beatboxerTwoId];
+            if (!battleOpponents[i].isStarted) {
+                currentOpponents[counter] = [
+                    beatboxers[battleOpponents[i].beatboxerOneId],
+                    beatboxers[battleOpponents[i].beatboxerTwoId]
+                ];
+                counter++;
+            }
         }
-        return _beatboxers;
+        return currentOpponents;
     }
 
     function getVotedBattlesIndices(address judge)

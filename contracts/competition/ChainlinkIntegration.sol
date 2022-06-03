@@ -42,16 +42,13 @@ abstract contract ChainlinkIntegration is
             metaData.competitionState == CompetitionState.WILDCARD_SELECTION,
             "Wildcard Selection Not Active"
         );
-        require(judgeCount.current() > 0, "No Judge Added");
+        require(judgeCount.current() >= JUDGES_MIN_COUNT, "Not Enough Judges");
         metaData.competitionState = CompetitionState.TOP_SIXTEEN;
         for (uint256 i = 0; i < beatboxerAddresses.length; i++) {
-            if (hasRole(JUDGE_ROLE, beatboxerAddresses[i])) {
-                revert("JudgeCannotBeBeatboxer");
-            }
             competitionStateToBeatboxerIds[CompetitionState.TOP_SIXTEEN].push(
                 i
             );
-            beatboxers[i] = (Beatboxer(names[i], beatboxerAddresses[i]));
+            beatboxers[i] = Beatboxer(names[i], beatboxerAddresses[i]);
         }
         _randomNumberRequest();
         emit BeatboxersAdded();
@@ -73,15 +70,14 @@ abstract contract ChainlinkIntegration is
     }
 
     function _setBattleOpponents(uint256 randomNumber) internal {
-        uint256[] memory beatboxersIds = competitionStateToBeatboxerIds[
-            metaData.competitionState
-        ];
+        CompetitionState state = metaData.competitionState;
+        uint256[] memory beatboxersIds = competitionStateToBeatboxerIds[state];
         uint256[] memory shuffledBeatboxersIds = _randomlyShuffle(
             beatboxersIds,
             randomNumber
         );
         for (uint256 i; i < shuffledBeatboxersIds.length; i += 2) {
-            competitionStateToBattleOpponents[metaData.competitionState].push(
+            competitionStateToBattleOpponents[state].push(
                 BattleOpponent(
                     shuffledBeatboxersIds[i],
                     shuffledBeatboxersIds[i + 1],
